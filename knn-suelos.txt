@@ -1,0 +1,169 @@
+ACTIVIDAD: KNN-SUELOS
+
+LINK DE STREAMLIT: https://knn-suelos-j89yawrwhiyen6cshjdq7d.streamlit.app/
+
+========================================================
+RESPUESTAS A LAS PREGUNTAS DE LA ACTIVIDAD
+========================================================
+
+Datos usados: muestra de ~5000 registros del dataset de AGROSAVIA
+(https://www.datos.gov.co/resource/ch4u-f3i5.json, ~92 738 registros completos en la API).
+Etiqueta "fertilidad" (baja/media/alta) creada con umbrales didácticos sobre MO, P y K.
+Resultados numéricos obtenidos ejecutando el análisis (semilla 42).
+
+--------------------------------------------------------
+A) PREGUNTAS GUÍA (del notebook "KNN con suelos de AGROSAVIA")
+--------------------------------------------------------
+
+1. ¿Por qué una muestra por bloques aleatorios es mejor que $limit=5000 sin más?
+Con $limit=5000 se toma un solo bloque contiguo: puede quedar dominado por una sola
+región, un solo rango de valores o una sola clase, no representando la variedad del
+país. Pedir 5 bloques desde posiciones aleatorias (ofset/distinta) recorre distintas
+zonas del dataset, logrando una muestra más variada y representativa sin descargarla
+completa.
+
+2. ¿Qué pasa con la predicción si cambias K_DEMO a 1? ¿Y a 25? ¿Qué muestra nueva sería
+difícil de clasificar?
+Con k=1 la predicción depende de un único vecino: es sensible al ruido y cambia mucho de
+un punto a otro (sobreajuste); cualquier suelo pegajoso a su vecino se clasifica como él.
+Con k=25 se promedian demasiados vecinos: la frontera se suaviza de más y los casos
+minoritarios (alto) tienden a perderse (subajuste). Es difícil clasificar una muestra que
+cae justo en la frontera entre dos clases (p. ej. entre baja y media), porque su vecindad
+está dividida y basta mover un vecino para cambiar de clase.
+
+3. ¿Cuánto cambia el desempeño de KNN al escalar? ¿Qué variables dominarían la distancia sin escalar?
+Cambia bastante: con k=15, F1 macro sin escalar = 0.406 y estandarizado = 0.549 (mejora
+~0.14). Sin escalar, las variables de mayor magnitud dominan la distancia al cuadrado; en
+estos datos son el hierro (desv. estándar ~224 mg/kg), el azufre (~27) y el manganeso
+(~12). Esas magnitudes opacan a variables importantes de magnitud pequeña como los cationes.
+
+4. ¿Por qué con k=1 el desempeño en train es perfecto? ¿Cuál es el mejor k y por qué no es el máximo posible?
+Con k=1 cada muestra se clasifica con su propio vecino más cercano, que en train es
+ella misma: acierta siempre (F1 en train ~1.0 de memoria, no de aprendizaje). El mejor k
+por validación cruzada resultó k=9 (F1 CV ≈ 0.565). No conviene el máximo posible porque
+entonces todos los suelos votarían igual, con la clase mayoritaria, y el modelo sería una
+línea base: pierde las clases minoritarias (subajuste). El punto óptimo equilibra sesgo y
+varianza.
+
+5. ¿Alguna combinación es claramente mejor, o las diferencias son pequeñas? ¿Qué dice eso sobre
+dónde vale la pena invertir esfuerzo?
+Con el mejor k (~9), las cuatro combinaciones van de 0.565 a 0.584: euclidiana/uniforme
+0.565, euclidiana/distancia 0.576, manhattan/uniforme 0.568, manhattan/distancia 0.584.
+La diferencia es pequeña (< 0.02) y está dentro de la variación entre pliegues. Conclusión:
+vale más la pena invertir en el escalado y en elegir k (que dan mejoras grandes) que en
+afinar la distancia y los pesos (marginales).
+
+6. ¿Qué pregunta te haría sospechar de un resultado tan bueno? ¿Por qué excluimos también cice?
+Revisaría: "¿de dónde salió la etiqueta y qué variables intervinieron en crearla?". Si la
+etiqueta se construyó con MO, P y K, dar esas variables como entrada permite que el modelo
+reconstruya la fórmula: sube (exactitud 0.75→0.85, F1 0.59→0.77) pero no es un modelo mejor,
+es una trampa (fuga de datos). Se excluye también cice porque la capacidad de intercambio
+catiónico efectiva se calcula como la suma de bases (Ca + Mg + K + Na) más la acidez:
+contiene el potasio, así que filtraría información de la etiqueta de forma indirecta aunque
+no esté en la fórmula.
+
+7. ¿Cuánto cae KNN al añadir ruido? ¿Qué familia química aporta más señal y cuál casi nada?
+¿Qué harías antes de aplicar KNN a un conjunto con 100 variables?
+El ruido daña mucho a KNN: F1 test 0.585 (0 ruido) → 0.551 (5) → 0.480 (10) → 0.437 (20) →
+0.376 (40). La caída es fuerte al principio y se satura. Entre familias, las que aportan más
+señal están ligadas a nutrientes/bases relacionadas con la fertilidad; el ruido puro no
+aporta nada. Antes de aplicar KNN a 100 variables haría selección/reducción de características
+(correlación, RFE, análisis por familias) y estandarización, porque KNN trata todas las
+variables por igual y las inútiles degradan la distancia.
+
+8. ¿En qué clase se confunde más el modelo y por qué? ¿Cuánto mejora frente a la línea base?
+¿Te parece suficiente para un diagnóstico real de campo?
+El modelo identifica bien "baja" (recall 0.90, F1 0.84) y se confunde sobre todo con "alta"
+(recall 0.42) y "media" (recall 0.45). Es esperable: son clases minoritarias y contiguas, con
+fronteras difusas entre suelos intermedios. Frente a la línea base (todo "baja": exactitud
+0.669, F1 macro 0.267), el KNN afinado mejora bastante: exactitud 0.747 y F1 macro 0.619,
+más del doble de F1. Aun así, con F1 ~0.6 y confusiones entre media/alta, NO sería prudente
+usarlo solo para un diagnóstico real de campo; serviría como apoyo o cribado, complementado
+con criterio agronómico.
+
+--------------------------------------------------------
+B) PREGUNTAS DE LA APP DE STREAMLIT (una por pestaña)
+--------------------------------------------------------
+
+1. (Vecinos) ¿En qué zona del gráfico están los suelos cuya clase cambia al mover k? ¿Por qué?
+En la zona de frontera entre clases, donde los puntos de baja y media (o media y alta) se
+mezclan. Allí la votación está muy dividida y cambiar k hace que un vecino distinto incline
+la mayoría; lejos de la frontera, la vecindad es homogénea y la clase no cambia.
+
+2. (Escalado) ¿Qué cambia en el gráfico al estandarizar y por qué es importante para KNN?
+Sin estandarizar, variables de gran magnitud (hierro, azufre, manganeso) acaparan el % de la
+distancia al cuadrado; al estandarizar el aporte se reparte por igual y todas las variables
+importan. Es clave porque KNN clasifica por distancia: una escala dominante equivale a
+ignorar al resto de variables.
+
+3. (Elegir k) Relaciona el gráfico con sobreajuste y subajuste.
+La línea de entrenamiento cae desde ~1.0 (k=1: memoriza, sobreajuste) y la de validación sube
+hasta un máximo (k≈9) para luego bajar: k grandes promedian de más y borran detalles
+(subajuste). La franja verde (variación entre pliegues) se amplía con k pequeños: más varianza.
+
+4. (Distancia y pesos) ¿Alguna combinación es claramente mejor? ¿Cómo lo sabes mirando las líneas negras?
+No hay una ganadora clara: las barras (0.565–0.584) se solapan y las líneas negras (±1 σ
+entre pliegues) muestran que la diferencia está dentro del ruido. Manhattan + "por distancia"
+suele quedar arriba, pero por poco. Se gana poco ahí: el escalado y k importan más.
+
+5. (Exactitud vs. F1) ¿Qué exactitud logra la línea base y por qué eso no la convierte en buen modelo?
+En el caso base responde siempre "baja" (clase mayoritaria) y acierta ~67 % (0.669). Esa
+exactitud engaña porque no acierta ninguna muestra media ni alta: con clases desbalanceadas,
+la exactitud oculta el fracaso; por eso se usa F1 macro (0.267 en la línea base).
+
+6. (Matriz de confusión) ¿Qué clase se identifica mejor y cuál peor? ¿Por qué crees que ocurre?
+"Baja" se identifica mejor (más muestras y más separadas: recall 0.90). "Alta" es la peor
+(recall 0.42): es la clase minoritaria (~7 %) y sus umbrales la sitúan al extremo de la
+escala, con pocos ejemplos y fronteras difusas, por lo que su error va sobre todo hacia
+"media".
+
+7. (Fuga de datos) ¿Qué pasa con el F1 al agregar MO, P y K? ¿Por qué eso no significa que el modelo sea mejor?
+El F1 sube de forma notable (con todas las variables, exactitud 0.75→0.85 y F1 0.59→0.77).
+No significa que el modelo sea mejor: la etiqueta se construyó con esas variables, así que el
+modelo solo "lee" la respuesta en las entradas (fuga de datos). En producción, esa etiqueta
+no existiría al momento de predecir.
+
+8. (Variables inútiles) ¿Por qué le afecta a KNN añadir variables que no tienen relación con la fertilidad?
+KNN calcula la distancia usando todas las columnas por igual. Cada columna de ruido desplaza
+las distancias al azar y termina dominando la vecindad; el F1 cae de 0.585 (0 columnas) a
+~0.38 (40 columnas). Es la maldición de la dimensionalidad: variables sin señal no ayudan y
+solo añaden ruido a la distancia.
+
+--------------------------------------------------------
+C) PREGUNTAS DE REFLEXIÓN (cierre del Colab)
+--------------------------------------------------------
+
+1. ¿Por qué el fósforo (cientos de mg/kg) arruinaría KNN sin escalar?
+Porque KNN clasifica por distancias: al elevar al cuadrado la diferencia en fósforo, esa
+variable aporta casi todo el peso de la distancia y las demás dejan de contar. Lo mismo
+pasa con Fe/S/Mn aquí; por eso se estandariza.
+
+2. Si el laboratorio agrega 30 variables nuevas al análisis, ¿mejorará KNN automáticamente?
+No. KNN empeora o se estanca: las variables sin información añaden ruido a la distancia
+(maldición de la dimensionalidad) y cada punto queda "igual de lejos". Solo mejoraría si las
+variables nuevas tuvieran señal real, y aun así habría que seleccionarlas.
+
+3. Los datos provienen de quien paga un análisis, no de un muestreo aleatorio del país.
+¿Qué sesgo introduce?
+Sesgo de selección: se sobre-representan suelos de agricultores que deciden tomar análisis
+(zonas más productivas/comerciales, cultivos específicos) y se sub-representan suelos sin
+análisis. El modelo generaliza mal a suelos "no pagados" y a regiones ausentes de la muestra.
+
+4. Cambia los UMBRALES en la sección 3: ¿cómo cambian las clases y el desempeño?
+Subir los umbrales desplaza suelos hacia clases más bajas y baja los umbrales los vuelve más
+altos: cambia la distribución y el desbalance. Si una clase queda con muy pocos casos, el
+F1 macro y la estabilidad empeoran; si los umbrales separan mejor los grupos, el desempeño
+puede mejorar. Es un recordatorio de que la etiqueta es una construcción, no un dato medido.
+
+5. ¿Cómo le explicarías a un agricultor por qué KNN diagnosticó su suelo como "fertilidad baja"?
+"El algoritmo no analizó el suelo en sí: comparó su análisis con el de miles de suelos
+parecidos en los datos de AGROSAVIA, miró los k más parecidos y se fijó en la fertilidad de
+esos vecinos. Como sus valores de materia orgánica, fósforo y potasio quedan por debajo de
+los umbrales usados en el modelo, la mayoría de esos vecinos entró como 'baja'. Es una
+sugerencia técnica para revisar con su agrónomo, no un veredicto final."
+
+6. ¿Qué otras variables derivadas de un laboratorio podrían filtrar información de la etiqueta sin que lo notes?
+Cualquier variable que se calcule a partir de MO, P o K: saturación de bases, relaciones K/Mg,
+suma de cationes, balances nutricionales o índices compuestos. Antes de usarlas hay que
+revisar la fórmula de cada variable: si contiene (directa o indirectamente) los insumos de la
+etiqueta, hay riesgo de fuga indirecta.
