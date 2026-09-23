@@ -1,4 +1,5 @@
 ACTIVIDAD: KNN-SUELOS
+Autor: Santiago Herazo
 
 LINK DE STREAMLIT: https://knn-suelos-j89yawrwhiyen6cshjdq7d.streamlit.app/
 
